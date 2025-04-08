@@ -1,0 +1,8 @@
+streamlit
+transformers==4.35.2
+torch
+openai>=0.27.0
+pandas>=1.5.0
+plotly>=5.13.0
+python-dotenv>=0.21.0
+numpy>=1.23.0
