@@ -8,6 +8,7 @@ from datetime import datetime
 import time
 import logging
 from constants import STYLES, DEMO_TEMPLATES
+from streamlit.components.v1 import html
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -431,23 +432,23 @@ with results_tab:
             
             # Display the 3 most recent transactions with improved UI
             if isinstance(st.session_state.recent_transaction, list) and len(st.session_state.recent_transaction) > 0:
-                for i, transaction in enumerate(st.session_state.recent_transaction[:3]):
-                    status = transaction.get('status', 'Unknown')
-                    status_color = "red" if status == "Declined" else "green" if status == "Approved" else "orange"
-                    
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; border-radius: 10px; padding: 10px; 
-                              margin-bottom: 10px; border-left: 5px solid 
-                              {'#D32F2F' if status == 'Declined' else '#4CAF50' if status == 'Approved' else '#FF9800'}">
-                        <div style="display: flex; justify-content: space-between;">
-                            <strong>{transaction.get('merchant', 'Unknown')}</strong>
-                            <span style="color: {status_color}; font-weight: bold;">{status}</span>
+                for transaction in st.session_state.recent_transactions:
+                    status = transaction.get("status", "Unknown")
+                    status_color = "#D32F2F" if status == "Declined" else "#4CAF50" if status == "Approved" else "#FF9800"
+
+                    html_content = f"""
+                        <div style="background-color: #f8f9fa; border-radius: 10px; padding: 10px; margin-bottom: 10px; border-left: 5px solid {status_color};">
+                            <div style="display: flex; justify-content: space-between;">
+                                <strong>{transaction.get('merchant', 'Unknown')}</strong>
+                                <span style="color: {status_color}; font-weight: bold;">{status}</span>
+                            </div>
+                            <div style="margin-top: 4px; font-size: 0.9em;">
+                                {transaction.get('date', 'Unknown')} | {transaction.get('amount', 'Unknown')}
+                            </div>
                         </div>
-                        <p style="margin: 2px 0; font-size: 0.9em;">
-                            {transaction.get('date', 'Unknown')} | {transaction.get('amount', 'Unknown')}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """
+                    html(html_content, height=100)  # Adjust height as nee
+
             else:
                 recent_tx = st.session_state.recent_transaction
                 status = recent_tx.get('status', 'N/A')
