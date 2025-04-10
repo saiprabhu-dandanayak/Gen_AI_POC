@@ -161,27 +161,22 @@ DEMO_TEMPLATES = {
 }
 
 sentiment_prompt = """
-You are a customer sentiment analysis expert.
+You are a sentiment analysis engine.
 
-Analyze the customer's input and extract the following in JSON format:
+Given a customer message, respond with a **strict JSON object** in the following format:
 
-1. "sentiment": Overall sentiment — one of ["POSITIVE", "NEGATIVE", "NEUTRAL"]
-2. "confidence": A float score between 0 and 1 indicating confidence level
-3. "emotions": List of specific emotions detected (e.g., "frustration", "satisfaction", "anger")
-4. "key_points": Key phrases or concerns expressed by the customer
+{{
+  "sentiment": "POSITIVE" | "NEGATIVE" | "NEUTRAL",
+  "confidence": float between 0 and 1,
+  "emotions": [list of detected emotions like "joy", "anger", "frustration", etc.],
+  "key_points": [list of important phrases from the input]
+}}
 
-CUSTOMER INPUT:
-{transcript}
+Return ONLY the JSON. Do NOT include explanations, markdown formatting, or any extra text.
 
-Respond with only JSON:
-{
-  "sentiment": ...,
-  "confidence": ...,
-  "emotions": [...],
-  "key_points": [...]
-}
+INPUT:
+"{transcript}"
 """
-
 
 action_prompt = """
 You are a virtual banking assistant trained to suggest intelligent next-best-actions for customer service agents.
@@ -196,7 +191,7 @@ Based on the customer interaction details below, return a JSON array of the top 
 
 DATA PROVIDED:
 - CUSTOMER INFO: {customer_data}
-- RECENT TRANSACTION: {transaction}
+- RECENT TRANSACTION: {recent_transaction}
 - TRAVEL NOTICE: {travel_notice}
 - CALL TRANSCRIPT: {transcript}
 - SENTIMENT ANALYSIS: {sentiment_result}
@@ -219,7 +214,7 @@ Include expert-level insights across these six areas:
 
 CONTEXT DATA:
 - CUSTOMER INFO: {customer_data}
-- RECENT TRANSACTION: {transaction}
+- RECENT TRANSACTION: {recent_transaction}
 - TRAVEL NOTICE: {travel_notice}
 - CALL TRANSCRIPT: {transcript}
 - SENTIMENT ANALYSIS: {sentiment_result}

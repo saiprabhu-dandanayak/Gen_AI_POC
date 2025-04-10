@@ -12,23 +12,47 @@ from constants import DEMO_TEMPLATES , sentiment_prompt , action_prompt , reason
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_transaction, model):
     try:
-        # Simulate sentiment analysis
         sentiment_messages = [
             {"role": "system", "content": "You are a sentiment analysis assistant."},
             {"role": "user", "content": sentiment_prompt.format(transcript=transcript)}
         ]
+        logger.info(">>> inside analyze with groq")
         sentiment_result, error = make_groq_request(sentiment_messages, model)
+        logger.error(f"⚠️ RAW sentiment_result before parsing:\n{repr(sentiment_result)}")
+
         if error:
             return {}, [], f"Sentiment analysis failed: {error}"
+        
+        try:
+            if isinstance(sentiment_result, str):
+                sentiment_result = sentiment_result.strip()
+                if sentiment_result.startswith("{") and sentiment_result.endswith("}"):
+                    sentiment_json = json.loads(sentiment_result)
+                else:
+                    logger.warning(f"Invalid JSON format: {sentiment_result}")
+                    sentiment_json = {"sentiment": "NEUTRAL", "confidence": 0.5, "emotions": [], "key_points": []}
+
+            else:
+                sentiment_json = sentiment_result
+                
+            if not isinstance(sentiment_json, dict):
+                sentiment_json = {"sentiment": "NEUTRAL", "confidence": 0.5, "emotions": [], "key_points": []}
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            sentiment_json = {"sentiment": "NEUTRAL", "confidence": 0.5, "emotions": [], "key_points": []}
+            logger.warning(f"Could not parse sentiment result as JSON: {sentiment_result}")
+
+        sentiment_result = sentiment_json
 
         action_input = action_prompt.format(
             customer_data=json.dumps(customer_data),
             transcript=transcript,
             travel_notice=json.dumps(travel_notice_data),
-            recent_transaction=json.dumps(recent_transaction)
+            recent_transaction=json.dumps(recent_transaction),
+            sentiment_result=json.dumps(sentiment_result)  
         )
         action_messages = [
             {"role": "system", "content": "You are a customer support assistant recommending next best actions."},
@@ -49,6 +73,7 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
                 }
             ]
         except json.JSONDecodeError:
+            logger.warning(f"Could not parse actions result as JSON: {actions_result}")
             recommended_actions = [
                 {
                     "action": "Follow-up Call",
@@ -59,7 +84,13 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
                 }
             ]
 
-        reasoning_input = reasoning_prompt.format(actions=json.dumps(recommended_actions))
+        reasoning_input = reasoning_prompt.format(
+            customer_data=json.dumps(customer_data),
+            transcript=transcript,
+            travel_notice=json.dumps(travel_notice_data),
+            recent_transaction=json.dumps(recent_transaction),
+            sentiment_result=json.dumps(sentiment_result)
+        )
         reasoning_messages = [
             {"role": "system", "content": "You are an assistant explaining your reasoning."},
             {"role": "user", "content": reasoning_input}
@@ -69,13 +100,14 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
             chain_of_thought = "Reasoning could not be generated due to an error."
 
         return (
-            {"sentiment": sentiment_result or "Neutral"},
+            sentiment_result,  
             recommended_actions,
             chain_of_thought or "No reasoning provided."
         )
     except Exception as e:
         logger.error(f"Analysis error: {str(e)}")
         return {}, [], f"Analysis failed: {str(e)}"
+
 
 st.set_page_config(
     page_title="Next Best Action Recommendation Engine",
@@ -306,34 +338,39 @@ with input_tab:
                 
                 st.rerun()
 
-        if st.button("🔍 Run AI Analysis", use_container_width=True):
-            if not st.session_state.api_key_set or not st.session_state.groq_api_key:
-                st.error("Please enter a valid Groq API key in the sidebar.")
-            else:
-                with st.spinner("Analyzing conversation context..."):
-                    progress_bar = st.progress(0)
-                    for i in range(100):
-                        time.sleep(0.01)
-                        progress_bar.progress(i + 1)
+if st.button("🔍 Run AI Analysis", use_container_width=True):
+    if not st.session_state.api_key_set or not st.session_state.groq_api_key:
+        st.error("Please enter a valid Groq API key in the sidebar.")
+    else:
+        with st.spinner("Analyzing conversation context..."):
+            progress_bar = st.progress(0)
+            for i in range(100):
+                time.sleep(0.01)
+                progress_bar.progress(i + 1)
 
-                    rt = st.session_state.recent_transaction
-                    if isinstance(rt, list):
-                        rt = rt[0] if rt else {}
+            # Extract transcript from chat history
+            transcript = "\n".join([f"{'Customer' if msg['role'] == 'user' else 'Agent'}: {msg['content']}" 
+                                    for msg in st.session_state.customer_chat_history])
+            
+            rt = st.session_state.recent_transaction
+            if isinstance(rt, list):
+                rt = rt[0] if rt else {}
 
-                    sentiment_result, recommended_actions, chain_of_thought = analyze_with_groq(
-                        st.session_state.call_transcript,
-                        st.session_state.customer_data,
-                        st.session_state.travel_notice_data,
-                        rt,
-                        model=model_option
-                    )
+            sentiment_result, recommended_actions, chain_of_thought = analyze_with_groq(
+                transcript,
+                st.session_state.customer_data,
+                st.session_state.travel_notice_data,
+                rt,
+                model=model_option
+            )
 
-                    st.session_state.sentiment_result = sentiment_result or {}
-                    st.session_state.recommended_actions = recommended_actions or []
-                    st.session_state.chain_of_thought = chain_of_thought or ""
-                    st.session_state.analyzed = True
+            st.session_state.sentiment_result = sentiment_result or {}
+            st.session_state.recommended_actions = recommended_actions or []
+            st.session_state.chain_of_thought = chain_of_thought or ""
+            st.session_state.analyzed = True
 
-                    st.success("Analysis complete! Switch to the Results tab to see recommendations and detected emotions.")
+            st.success("Analysis complete! Switch to the Results tab to see recommendations and detected emotions.")
+
 
 with results_tab:
     if not st.session_state.analyzed:
