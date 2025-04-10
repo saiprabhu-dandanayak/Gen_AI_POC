@@ -43,6 +43,29 @@ STYLES = """
     }
 </style>
 """
+CHAT_BOX_STYLES = """
+<style>
+.chat-message {
+    margin-bottom: 1rem;
+    padding: 0.8rem;
+    border-radius: 10px;
+    max-width: 60%;
+    margin-bottom: 1rem;
+}
+.user {
+    background-color: #dcf8c6;
+    margin-left: auto;
+    max-width: 60%;
+}
+.assistant {
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+}
+.timestamp {
+    text-align: right;
+    margin-top: 0.25rem;
+</style>
+"""
 
 DEMO_TEMPLATES = {
     "Card Declined While Traveling": {
@@ -137,75 +160,69 @@ DEMO_TEMPLATES = {
     }
 }
 
-# Sentiment Analysis Prompt
 sentiment_prompt = """
-Analyze the following customer input and identify:
-1. Overall sentiment (POSITIVE, NEGATIVE, or NEUTRAL)
-2. Confidence score (0–1)
-3. Specific emotions present (e.g., frustration, anger, satisfaction)
-4. Key points of concern or satisfaction
+You are a customer sentiment analysis expert.
 
-Input:
+Analyze the customer's input and extract the following in JSON format:
+
+1. "sentiment": Overall sentiment — one of ["POSITIVE", "NEGATIVE", "NEUTRAL"]
+2. "confidence": A float score between 0 and 1 indicating confidence level
+3. "emotions": List of specific emotions detected (e.g., "frustration", "satisfaction", "anger")
+4. "key_points": Key phrases or concerns expressed by the customer
+
+CUSTOMER INPUT:
 {transcript}
 
-Return only JSON with keys: sentiment, confidence, emotions, key_points
+Respond with only JSON:
+{
+  "sentiment": ...,
+  "confidence": ...,
+  "emotions": [...],
+  "key_points": [...]
+}
 """
 
-# Next Best Actions Prompt
+
 action_prompt = """
-Based on the following details, recommend the next best actions for a bank agent:
+You are a virtual banking assistant trained to suggest intelligent next-best-actions for customer service agents.
 
-CUSTOMER INFORMATION:
-{customer_data}
+Based on the customer interaction details below, return a JSON array of the top 5 recommended actions. Each action must include:
 
-RECENT TRANSACTION:
-{transaction}
+- "action": Concise action title
+- "description": Detailed instruction for the agent
+- "priority": One of ["High", "Medium", "Low"]
+- "icon": A relevant emoji
+- "category": One of ["Technical Resolution", "Customer Service", "Sales Opportunity", "Fraud Prevention", "General Inquiry"]
 
-TRAVEL NOTICE:
-{travel_notice}
+DATA PROVIDED:
+- CUSTOMER INFO: {customer_data}
+- RECENT TRANSACTION: {transaction}
+- TRAVEL NOTICE: {travel_notice}
+- CALL TRANSCRIPT: {transcript}
+- SENTIMENT ANALYSIS: {sentiment_result}
 
-CALL TRANSCRIPT:
-{transcript}
-
-SENTIMENT ANALYSIS:
-{sentiment_result}
-
-Return a JSON array with the top 5 recommended actions, each containing:
-1. "action": short title
-2. "description": detailed agent instruction
-3. "priority": "High", "Medium", or "Low"
-4. "icon": appropriate emoji
-5. "category": e.g., "Technical Resolution", "Customer Service", "Sales Opportunity"
-
-Only return valid JSON — no additional text.
+Return only valid JSON — no explanations, notes, or extra text.
 """
 
-# Chain of Thought Reasoning Prompt
+
 reasoning_prompt = """
-Provide a detailed step-by-step chain of thought analysis for this customer interaction:
+You are a senior customer experience analyst for a global bank. Perform a deep-dive diagnostic of the customer interaction below.
 
-CUSTOMER INFORMATION:
-{customer_data}
+Include expert-level insights across these six areas:
 
-RECENT TRANSACTION:
-{transaction}
+1. **Customer Context Analysis** — Who is the customer? What do we know about them?
+2. **Problem Identification** — What issues or concerns are being raised?
+3. **Emotional Impact Assessment** — What emotions are influencing the customer’s tone and behavior?
+4. **Priority Determination** — How urgent or critical is this interaction?
+5. **Opportunity Analysis** — Are there upsell, cross-sell, or loyalty-building opportunities?
+6. **Long-term Relationship Considerations** — What can be done to strengthen long-term trust and satisfaction?
 
-TRAVEL NOTICE:
-{travel_notice}
+CONTEXT DATA:
+- CUSTOMER INFO: {customer_data}
+- RECENT TRANSACTION: {transaction}
+- TRAVEL NOTICE: {travel_notice}
+- CALL TRANSCRIPT: {transcript}
+- SENTIMENT ANALYSIS: {sentiment_result}
 
-CALL TRANSCRIPT:
-{transcript}
-
-SENTIMENT ANALYSIS:
-{sentiment_result}
-
-Include sections for:
-1. Customer Context Analysis
-2. Problem Identification
-3. Emotional Impact Assessment
-4. Priority Determination
-5. Opportunity Analysis
-6. Long-term Relationship Considerations
-
-Respond with a thorough and thoughtful analysis reflecting expert-level understanding of banking customer service.
+Return a detailed and well-structured narrative under each section header.
 """

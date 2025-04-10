@@ -8,7 +8,7 @@ import time
 import logging
 import requests
 from datetime import datetime
-from constants import DEMO_TEMPLATES , sentiment_prompt , action_prompt , reasoning_prompt , STYLES
+from constants import DEMO_TEMPLATES , sentiment_prompt , action_prompt , reasoning_prompt , STYLES ,CHAT_BOX_STYLES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -181,29 +181,7 @@ def make_groq_request(messages, model, temperature=0.7, max_tokens=1000):
 
 input_tab, results_tab = st.tabs(["📝 Input Data", "📊 Analysis Results"])
 
-st.markdown("""
-<style>
-.chat-message {
-    margin-bottom: 1rem;
-    padding: 0.8rem;
-    border-radius: 10px;
-    max-width: 60%;
-    margin-bottom: 1rem;
-}
-.user {
-    background-color: #dcf8c6;
-    margin-left: auto;
-    max-width: 60%;
-}
-.assistant {
-    background-color: #ffffff;
-    border: 1px solid #ddd;
-}
-.timestamp {
-    text-align: right;
-    margin-top: 0.25rem;
-</style>
-""", unsafe_allow_html=True)
+st.markdown(CHAT_BOX_STYLES, unsafe_allow_html=True)
 
 if st.session_state.use_lisa_for_customer and st.session_state.lisa_response:
     st.session_state.customer_chat_history.append({"role": "assistant", "content": st.session_state.lisa_response , "timestamp": datetime.now().strftime("%I:%M %p")})
