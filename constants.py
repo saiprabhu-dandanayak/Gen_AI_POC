@@ -1,6 +1,3 @@
-# constants.py
-
-# CSS Styles
 STYLES = """
 <style>
     .main-header {
@@ -47,7 +44,6 @@ STYLES = """
 </style>
 """
 
-# Demo templates
 DEMO_TEMPLATES = {
     "Card Declined While Traveling": {
         "customer_data": {
@@ -140,3 +136,76 @@ DEMO_TEMPLATES = {
 
     }
 }
+
+# Sentiment Analysis Prompt
+sentiment_prompt = """
+Analyze the following customer input and identify:
+1. Overall sentiment (POSITIVE, NEGATIVE, or NEUTRAL)
+2. Confidence score (0–1)
+3. Specific emotions present (e.g., frustration, anger, satisfaction)
+4. Key points of concern or satisfaction
+
+Input:
+{transcript}
+
+Return only JSON with keys: sentiment, confidence, emotions, key_points
+"""
+
+# Next Best Actions Prompt
+action_prompt = """
+Based on the following details, recommend the next best actions for a bank agent:
+
+CUSTOMER INFORMATION:
+{customer_data}
+
+RECENT TRANSACTION:
+{transaction}
+
+TRAVEL NOTICE:
+{travel_notice}
+
+CALL TRANSCRIPT:
+{transcript}
+
+SENTIMENT ANALYSIS:
+{sentiment_result}
+
+Return a JSON array with the top 5 recommended actions, each containing:
+1. "action": short title
+2. "description": detailed agent instruction
+3. "priority": "High", "Medium", or "Low"
+4. "icon": appropriate emoji
+5. "category": e.g., "Technical Resolution", "Customer Service", "Sales Opportunity"
+
+Only return valid JSON — no additional text.
+"""
+
+# Chain of Thought Reasoning Prompt
+reasoning_prompt = """
+Provide a detailed step-by-step chain of thought analysis for this customer interaction:
+
+CUSTOMER INFORMATION:
+{customer_data}
+
+RECENT TRANSACTION:
+{transaction}
+
+TRAVEL NOTICE:
+{travel_notice}
+
+CALL TRANSCRIPT:
+{transcript}
+
+SENTIMENT ANALYSIS:
+{sentiment_result}
+
+Include sections for:
+1. Customer Context Analysis
+2. Problem Identification
+3. Emotional Impact Assessment
+4. Priority Determination
+5. Opportunity Analysis
+6. Long-term Relationship Considerations
+
+Respond with a thorough and thoughtful analysis reflecting expert-level understanding of banking customer service.
+"""
