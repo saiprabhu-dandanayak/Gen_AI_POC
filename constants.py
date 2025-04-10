@@ -186,7 +186,6 @@ Based on the customer interaction details below, return a JSON array of the top 
 - "action": Concise action title
 - "description": Detailed instruction for the agent
 - "priority": One of ["High", "Medium", "Low"]
-- "icon": A relevant emoji
 - "category": One of ["Technical Resolution", "Customer Service", "Sales Opportunity", "Fraud Prevention", "General Inquiry"]
 
 DATA PROVIDED:

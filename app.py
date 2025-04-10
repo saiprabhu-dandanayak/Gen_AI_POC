@@ -22,7 +22,7 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
         ]
         logger.info(">>> inside analyze with groq")
         sentiment_result, error = make_groq_request(sentiment_messages, model)
-        logger.error(f"⚠️ RAW sentiment_result before parsing:\n{repr(sentiment_result)}")
+        logger.info(f"⚠️ RAW sentiment_result before parsing:\n{repr(sentiment_result)}")
 
         if error:
             return {}, [], f"Sentiment analysis failed: {error}"
@@ -69,7 +69,7 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
                     "description": "Schedule a follow-up call to confirm travel notice.",
                     "priority": "High",
                     "category": "Customer Support",
-                    "icon": "📞"
+                 
                 }
             ]
         except json.JSONDecodeError:
@@ -80,7 +80,7 @@ def analyze_with_groq(transcript, customer_data, travel_notice_data, recent_tran
                     "description": "Schedule a follow-up call to confirm travel notice.",
                     "priority": "High",
                     "category": "Customer Support",
-                    "icon": "📞"
+                 
                 }
             ]
 
@@ -148,7 +148,7 @@ if not st.session_state.template_loaded and DEMO_TEMPLATES:
     selected_template = DEMO_TEMPLATES[first_template_key]
 
     st.session_state.customer_data = selected_template["customer_data"]
-    st.session_state.call_transcript = selected_template["call_transcript"]
+    # st.session_state.call_transcript = selected_template["call_transcript"]
     st.session_state.travel_notice_data = selected_template["travel_notice_data"]
     st.session_state.recent_transaction = selected_template["recent_transaction"]
     st.session_state.template_loaded = True
