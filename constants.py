@@ -81,29 +81,6 @@ DEMO_TEMPLATES = {
             "phone": "+1 (555) 123-4567",
             "email": "priya.sharma@email.com"
         },
-        "call_transcript": """
-        Agent: Thank you for calling International Bank. This is Alex speaking. How may I assist you today?
-
-        Priya: Hi, I'm extremely frustrated right now. I'm in Paris, and my card was just declined at a restaurant, which was very embarrassing. I specifically submitted a travel notice before leaving!
-
-        Agent: I'm sorry to hear that, Ms. Sharma. Could you please confirm your full name and the last four digits of your account for verification?
-
-        Priya: Priya Sharma, and the last four digits are 7842.
-
-        Agent: Thank you for that information. I see you're calling about a declined transaction. Let me check what's happening with your account.
-
-        Priya: Yes, please do. I submitted a travel notice last week specifically to avoid this situation! I'm only here for three more days and need my card to work.
-
-        Agent: I understand your frustration. Let me look into your travel notice... I can see that you submitted a travel notice, but it seems there might be an issue with the dates or countries listed. Can you confirm when you submitted it and which countries you included?
-
-        Priya: I submitted it on May 2nd, and I listed France, Italy, and Spain for May 5th through May 15th. I'm in Paris right now, so France should definitely be covered!
-
-        Agent: I see the issue now. It appears your travel notice was processed, but there was a system error that prevented it from being properly activated. I sincerely apologize for this inconvenience.
-
-        Priya: That's unacceptable! I rely on this card when traveling, and now I'm stuck without access to my funds in a foreign country!
-
-        Agent: You're absolutely right, and I apologize again for this situation. I'll correct this immediately.
-        """,
         "travel_notice_data": {
             "submitted_date": "May 2, 2023",
             "travel_start": "May 5, 2023",
@@ -220,3 +197,14 @@ CONTEXT DATA:
 
 Return a detailed and well-structured narrative under each section header.
 """
+
+SAMPLE_QUERIES = [
+    "Why was my transaction declined in Japan?",
+    "I need to activate my travel notice",
+    "I want to report my card as lost",
+    "Tell me about my recent transactions",
+    "What's my current account balance?",
+    "Update my contact preferences",
+    "I'm traveling to Germany next week",
+    "I need a new card"
+]
