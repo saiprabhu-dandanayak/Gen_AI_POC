@@ -155,15 +155,46 @@ INPUT:
 "{transcript}"
 """
 
+
 action_prompt = """
-You are a virtual banking assistant trained to suggest intelligent next-best-actions for customer service agents.
+You are a next-best-action generator for virtual banking assistants.
 
-Based on the customer interaction details below, return a JSON array of the top 5 recommended actions. Each action must include:
+Using the customer interaction data below, generate 5 recommended actions in JSON array format.
 
-- "action": Concise action title
-- "description": Detailed instruction for the agent
+Each action must contain:
+- "action": A short, actionable title
+- "description": Clear, step-by-step guidance for the agent
 - "priority": One of ["High", "Medium", "Low"]
-- "category": One of ["Technical Resolution", "Customer Service", "Sales Opportunity", "Fraud Prevention", "General Inquiry"]
+- "category": One of the following:
+    - "Technical Resolution" (e.g., fixing system or card issues)
+    - "Customer Service" (e.g., updating info, sending replacements)
+    - "Sales Opportunity" (e.g., upsell, upgrade suggestions)
+    - "Fraud Prevention" (e.g., flag unusual activity)
+    - "General Inquiry" (e.g., questions not requiring action)
+
+DATA:
+- CUSTOMER INFO: {customer_data}
+- RECENT TRANSACTION: {recent_transaction}
+- TRAVEL NOTICE: {travel_notice}
+- CALL TRANSCRIPT: {transcript}
+- SENTIMENT ANALYSIS: {sentiment_result}
+
+Only return clean JSON. No markdown. No explanation. Be specific and avoid generic actions.
+"""
+
+
+
+reasoning_prompt = """
+You are a senior customer experience strategist at a global bank. Perform a diagnostic breakdown of the interaction below using expert-level reasoning.
+
+Respond with detailed, structured text under each of these headers:
+
+1. **Customer Context Analysis** — Based only on the data, who is this customer? What matters to them?
+2. **Problem Identification** — What is the core issue or complaint?
+3. **Emotional Impact Assessment** — How is the customer emotionally affected? What specific phrases reflect this?
+4. **Priority Determination** — Rate the urgency (High, Medium, Low) and justify based on risk, impact, or sentiment.
+5. **Opportunity Analysis** — Are there meaningful upsell, loyalty, or recovery opportunities?
+6. **Long-term Relationship Considerations** — What specific actions will increase trust and long-term retention?
 
 DATA PROVIDED:
 - CUSTOMER INFO: {customer_data}
@@ -172,39 +203,6 @@ DATA PROVIDED:
 - CALL TRANSCRIPT: {transcript}
 - SENTIMENT ANALYSIS: {sentiment_result}
 
-Return only valid JSON — no explanations, notes, or extra text.
+Stick to the data. No guessing or padding.
 """
 
-
-reasoning_prompt = """
-You are a senior customer experience analyst for a global bank. Perform a deep-dive diagnostic of the customer interaction below.
-
-Include expert-level insights across these six areas:
-
-1. **Customer Context Analysis** — Who is the customer? What do we know about them?
-2. **Problem Identification** — What issues or concerns are being raised?
-3. **Emotional Impact Assessment** — What emotions are influencing the customer’s tone and behavior?
-4. **Priority Determination** — How urgent or critical is this interaction?
-5. **Opportunity Analysis** — Are there upsell, cross-sell, or loyalty-building opportunities?
-6. **Long-term Relationship Considerations** — What can be done to strengthen long-term trust and satisfaction?
-
-CONTEXT DATA:
-- CUSTOMER INFO: {customer_data}
-- RECENT TRANSACTION: {recent_transaction}
-- TRAVEL NOTICE: {travel_notice}
-- CALL TRANSCRIPT: {transcript}
-- SENTIMENT ANALYSIS: {sentiment_result}
-
-Return a detailed and well-structured narrative under each section header.
-"""
-
-SAMPLE_QUERIES = [
-    "Why was my transaction declined in Japan?",
-    "I need to activate my travel notice",
-    "I want to report my card as lost",
-    "Tell me about my recent transactions",
-    "What's my current account balance?",
-    "Update my contact preferences",
-    "I'm traveling to Germany next week",
-    "I need a new card"
-]
