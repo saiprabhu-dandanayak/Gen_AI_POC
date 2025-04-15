@@ -3,6 +3,7 @@ import datetime
 import re
 import json
 import logging
+import openai
 
 # Use the same logger as sai.py and agent_router.py
 logger = logging.getLogger('ChainOfThought')
@@ -11,12 +12,15 @@ class BaseAgent:
     """
     Base class for all specialized agents.
     Includes methods to log reasoning steps during processing.
+    Supports optional OpenAI integration for enhanced processing.
     """
 
-    def __init__(self, customer_data: Dict, travel_notice_data: Dict, recent_transactions: List[Dict]):
+    def __init__(self, customer_data: Dict, travel_notice_data: Dict, recent_transactions: List[Dict], openai_api_key: Optional[str] = None, model: Optional[str] = None):
         self.customer_data = customer_data
         self.travel_notice_data = travel_notice_data
         self.recent_transactions = recent_transactions
+        self.openai_api_key = openai_api_key
+        self.model = model
         self.reasoning_log = {
             "agent_type": self.__class__.__name__,
             "analysis_steps": [],
@@ -26,7 +30,7 @@ class BaseAgent:
             "response_construction": "",
             "next_best_actions": []
         }
-        logger.info("%s initialized", self.__class__.__name__)
+        logger.info("%s initialized with OpenAI: %s", self.__class__.__name__, "enabled" if self.openai_api_key else "disabled")
 
     def process(self, user_prompt: str) -> Dict:
         """
@@ -76,6 +80,35 @@ class BaseAgent:
         logger.info("%s - Added next best action: %s (Priority: %s, Category: %s)", 
                     self.__class__.__name__, action, priority, category)
 
+    def _make_openai_request(self, messages: List[Dict]) -> Tuple[Optional[str], Optional[str]]:
+        """Makes a request to the OpenAI API using the updated SDK syntax."""
+        if not self.openai_api_key or not self.model:
+            return None, "OpenAI not configured: No API key or model provided."
+        logger.debug("%s - Making OpenAI API request with %d messages", self.__class__.__name__, len(messages))
+        try:
+            client = openai.OpenAI(api_key=self.openai_api_key)
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1000
+            )
+            content = response.choices[0].message.content.strip()
+            logger.info("%s - OpenAI API request successful", self.__class__.__name__)
+            return content, None
+        except openai.AuthenticationError:
+            logger.error("%s - Invalid OpenAI API key", self.__class__.__name__)
+            return None, "Invalid API key. Please check your OpenAI API key."
+        except openai.RateLimitError:
+            logger.error("%s - OpenAI API rate limit exceeded", self.__class__.__name__)
+            return None, "Rate limit exceeded. Please try again later."
+        except openai.OpenAIError as e:
+            logger.error("%s - OpenAI API error: %s", self.__class__.__name__, str(e))
+            return None, f"API error: {str(e)}"
+        except Exception as e:
+            logger.error("%s - Unexpected error in OpenAI API request: %s", self.__class__.__name__, str(e))
+            return None, f"Unexpected error: {str(e)}"
+
 
 class TransactionAnalysisAgent(BaseAgent):
     """Agent specializing in transaction analysis and resolution"""
@@ -84,6 +117,81 @@ class TransactionAnalysisAgent(BaseAgent):
         logger.info("%s processing prompt: %s", self.__class__.__name__, user_prompt)
         self._add_analysis_step("Initializing TransactionAnalysisAgent")
         self._add_analysis_step(f"Received user prompt: '{user_prompt}'")
+
+        if self.openai_api_key and self.model:
+            return self._process_with_openai(user_prompt)
+        else:
+            return self._process_rule_based(user_prompt)
+
+    def _process_with_openai(self, user_prompt: str) -> Dict:
+        """Process the prompt using OpenAI for intent detection and response generation."""
+        self._add_analysis_step("Using OpenAI for transaction analysis")
+        prompt = """
+You are a banking transaction analysis agent. Your task is to analyze a customer query about their transactions and provide a response with recommended actions.
+
+**Context Data**:
+- Customer Info: {customer_data}
+- Recent Transactions: {recent_transactions}
+- Travel Notices: {travel_notice_data}
+- Customer Query: {query}
+
+**Instructions**:
+1. Analyze the query to identify the intent (e.g., check declined transaction, review recent purchases).
+2. Examine the recent transactions and travel notices for relevant details (e.g., declines, locations).
+3. Generate a natural language response addressing the query.
+4. Suggest 1-3 next best actions with priority (High, Medium, Low), description, category, and an emoji icon.
+5. Return a JSON object with:
+   - "response": The natural language response.
+   - "next_best_actions": List of actions, each with "action", "priority", "description", "category", "icon".
+   - "intent": The detected intent.
+Return ONLY the JSON object, wrapped in ```json\n...\n```.
+"""
+        messages = [{
+            "role": "system",
+            "content": prompt.format(
+                customer_data=json.dumps(self.customer_data, indent=2),
+                recent_transactions=json.dumps(self.recent_transactions, indent=2),
+                travel_notice_data=json.dumps(self.travel_notice_data, indent=2),
+                query=user_prompt
+            )
+        }]
+        response, error = self._make_openai_request(messages)
+        if error:
+            logger.error("%s - OpenAI error: %s. Falling back to rule-based processing", self.__class__.__name__, error)
+            self._add_analysis_step(f"OpenAI error: {error}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+        try:
+            # Strip JSON code fences
+            content = response.strip()
+            if content.startswith("```json\n") and content.endswith("\n```"):
+                content = content[7:-4].strip()
+            result = json.loads(content)
+            self._add_decision_factor("openai_detected_intent", result.get("intent", "unknown"))
+            self._add_analysis_step(f"OpenAI detected intent: {result.get('intent', 'unknown')}")
+            self._set_response_construction("Response generated by OpenAI based on query analysis")
+            for action in result.get("next_best_actions", []):
+                self._add_next_best_action(
+                    action["action"],
+                    action["priority"],
+                    action["description"],
+                    action["category"],
+                    action.get("icon", "🔹")
+                )
+            self._take_action("OpenAI Response Generated", f"Processed query: {user_prompt}")
+            return {
+                "response": result["response"],
+                "reasoning_log": self.reasoning_log,
+                "next_best_actions": result.get("next_best_actions", [])
+            }
+        except json.JSONDecodeError as e:
+            logger.error("%s - Invalid JSON from OpenAI: %s. Falling back to rule-based", self.__class__.__name__, str(e))
+            self._add_analysis_step(f"Invalid JSON from OpenAI: {str(e)}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+    def _process_rule_based(self, user_prompt: str) -> Dict:
+        """Original rule-based processing logic."""
+        self._add_analysis_step("Using rule-based transaction analysis")
 
         # Extract relevant transaction mentions
         self._add_analysis_step("Identifying specific transaction details (locations, merchants) mentioned in the query")
@@ -279,7 +387,7 @@ class TransactionAnalysisAgent(BaseAgent):
                 "No Matching Transactions Found",
                 "Informed user that no matching transactions were found."
             )
-            response = "I couldn't find any recent transactions specifically matching your description."
+            response = "I couldn't find  find any recent transactions specifically matching your description."
 
             if is_decline_focused:
                 response += " Were you looking for a declined transaction from a while ago, or perhaps at a different place?"
@@ -306,7 +414,7 @@ class TransactionAnalysisAgent(BaseAgent):
                     "Account Management", "🗓️"
                 )
 
-        logger.info("%s completed processing", self.__class__.__name__)
+        logger.info("%s completed rule-based processing", self.__class__.__name__)
         return {
             "response": response.strip(),
             "reasoning_log": self.reasoning_log,
@@ -373,6 +481,81 @@ class TravelNoticeAgent(BaseAgent):
         logger.info("%s processing prompt: %s", self.__class__.__name__, user_prompt)
         self._add_analysis_step("Initializing TravelNoticeAgent")
         self._add_analysis_step(f"Received user prompt: '{user_prompt}'")
+
+        if self.openai_api_key and self.model:
+            return self._process_with_openai(user_prompt)
+        else:
+            return self._process_rule_based(user_prompt)
+
+    def _process_with_openai(self, user_prompt: str) -> Dict:
+        """Process the prompt using OpenAI for intent detection and response generation."""
+        self._add_analysis_step("Using OpenAI for travel notice processing")
+        prompt = """
+You are a banking travel notice agent. Your task is to analyze a customer query about travel notices or international transactions and provide a response with recommended actions.
+
+**Context Data**:
+- Customer Info: {customer_data}
+- Recent Transactions: {recent_transactions}
+- Travel Notices: {travel_notice_data}
+- Customer Query: {query}
+
+**Instructions**:
+1. Analyze the query to identify the intent (e.g., check travel notice status, create new notice, update notice, activate notice).
+2. Check the travel notice data for active notices and relevant details.
+3. Generate a natural language response addressing the query.
+4. Suggest 1-3 next best actions with priority (High, Medium, Low), description, category, and an emoji icon.
+5. Return a JSON object with:
+   - "response": The natural language response.
+   - "next_best_actions": List of actions, each with "action", "priority", "description", "category", "icon".
+   - "intent": The detected intent.
+Return ONLY the JSON object, wrapped in ```json\n...\n```.
+"""
+        messages = [{
+            "role": "system",
+            "content": prompt.format(
+                customer_data=json.dumps(self.customer_data, indent=2),
+                recent_transactions=json.dumps(self.recent_transactions, indent=2),
+                travel_notice_data=json.dumps(self.travel_notice_data, indent=2),
+                query=user_prompt
+            )
+        }]
+        response, error = self._make_openai_request(messages)
+        if error:
+            logger.error("%s - OpenAI error: %s. Falling back to rule-based processing", self.__class__.__name__, error)
+            self._add_analysis_step(f"OpenAI error: {error}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+        try:
+            # Strip JSON code fences
+            content = response.strip()
+            if content.startswith("```json\n") and content.endswith("\n```"):
+                content = content[7:-4].strip()
+            result = json.loads(content)
+            self._add_decision_factor("openai_detected_intent", result.get("intent", "unknown"))
+            self._add_analysis_step(f"OpenAI detected intent: {result.get('intent', 'unknown')}")
+            self._set_response_construction("Response generated by OpenAI based on query analysis")
+            for action in result.get("next_best_actions", []):
+                self._add_next_best_action(
+                    action["action"],
+                    action["priority"],
+                    action["description"],
+                    action["category"],
+                    action.get("icon", "🔹")
+                )
+            self._take_action("OpenAI Response Generated", f"Processed query: {user_prompt}")
+            return {
+                "response": result["response"],
+                "reasoning_log": self.reasoning_log,
+                "next_best_actions": result.get("next_best_actions", [])
+            }
+        except json.JSONDecodeError as e:
+            logger.error("%s - Invalid JSON from OpenAI: %s. Falling back to rule-based", self.__class__.__name__, str(e))
+            self._add_analysis_step(f"Invalid JSON from OpenAI: {str(e)}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+    def _process_rule_based(self, user_prompt: str) -> Dict:
+        """Original rule-based processing logic."""
+        self._add_analysis_step("Using rule-based travel notice processing")
 
         intent = self._determine_intent(user_prompt)
         self._add_decision_factor("determined_intent", intent)
@@ -584,7 +767,7 @@ class TravelNoticeAgent(BaseAgent):
         if not mismatch_found:
             self._add_analysis_step("No transaction/notice mismatches found requiring immediate action.")
 
-        logger.info("%s completed processing", self.__class__.__name__)
+        logger.info("%s completed rule-based processing", self.__class__.__name__)
         return {
             "response": response.strip(),
             "reasoning_log": self.reasoning_log,
@@ -682,6 +865,81 @@ class CardServicesAgent(BaseAgent):
         logger.info("%s processing prompt: %s", self.__class__.__name__, user_prompt)
         self._add_analysis_step("Initializing CardServicesAgent")
         self._add_analysis_step(f"Received user prompt: '{user_prompt}'")
+
+        if self.openai_api_key and self.model:
+            return self._process_with_openai(user_prompt)
+        else:
+            return self._process_rule_based(user_prompt)
+
+    def _process_with_openai(self, user_prompt: str) -> Dict:
+        """Process the prompt using OpenAI for intent detection and response generation."""
+        self._add_analysis_step("Using OpenAI for card services processing")
+        prompt = """
+You are a banking card services agent. Your task is to analyze a customer query about their card (e.g., status, lost/stolen, replacement, limits) and provide a response with recommended actions.
+
+**Context Data**:
+- Customer Info: {customer_data}
+- Recent Transactions: {recent_transactions}
+- Travel Notices: {travel_notice_data}
+- Customer Query: {query}
+
+**Instructions**:
+1. Analyze the query to identify the intent (e.g., check card status, report lost/stolen, replace card, check limits).
+2. Check the customer data and transactions for relevant card details (e.g., status, declines).
+3. Generate a natural language response addressing the query.
+4. Suggest 1-3 next best actions with priority (High, Medium, Low), description, category, and an emoji icon.
+5. Return a JSON object with:
+   - "response": The natural language response.
+   - "next_best_actions": List of actions, each with "action", "priority", "description", "category", "icon".
+   - "intent": The detected intent.
+Return ONLY the JSON object, wrapped in ```json\n...\n```.
+"""
+        messages = [{
+            "role": "system",
+            "content": prompt.format(
+                customer_data=json.dumps(self.customer_data, indent=2),
+                recent_transactions=json.dumps(self.recent_transactions, indent=2),
+                travel_notice_data=json.dumps(self.travel_notice_data, indent=2),
+                query=user_prompt
+            )
+        }]
+        response, error = self._make_openai_request(messages)
+        if error:
+            logger.error("%s - OpenAI error: %s. Falling back to rule-based processing", self.__class__.__name__, error)
+            self._add_analysis_step(f"OpenAI error: {error}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+        try:
+            # Strip JSON code fences
+            content = response.strip()
+            if content.startswith("```json\n") and content.endswith("\n```"):
+                content = content[7:-4].strip()
+            result = json.loads(content)
+            self._add_decision_factor("openai_detected_intent", result.get("intent", "unknown"))
+            self._add_analysis_step(f"OpenAI detected intent: {result.get('intent', 'unknown')}")
+            self._set_response_construction("Response generated by OpenAI based on query analysis")
+            for action in result.get("next_best_actions", []):
+                self._add_next_best_action(
+                    action["action"],
+                    action["priority"],
+                    action["description"],
+                    action["category"],
+                    action.get("icon", "🔹")
+                )
+            self._take_action("OpenAI Response Generated", f"Processed query: {user_prompt}")
+            return {
+                "response": result["response"],
+                "reasoning_log": self.reasoning_log,
+                "next_best_actions": result.get("next_best_actions", [])
+            }
+        except json.JSONDecodeError as e:
+            logger.error("%s - Invalid JSON from OpenAI: %s. Falling back to rule-based", self.__class__.__name__, str(e))
+            self._add_analysis_step(f"Invalid JSON from OpenAI: {str(e)}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+    def _process_rule_based(self, user_prompt: str) -> Dict:
+        """Original rule-based processing logic."""
+        self._add_analysis_step("Using rule-based card services processing")
 
         intent = self._determine_intent(user_prompt)
         self._add_decision_factor("determined_intent", intent)
@@ -864,7 +1122,7 @@ class CardServicesAgent(BaseAgent):
                     "General Inquiry", "❓"
                 )
 
-        logger.info("%s completed processing", self.__class__.__name__)
+        logger.info("%s completed rule-based processing", self.__class__.__name__)
         return {
             "response": response.strip(),
             "reasoning_log": self.reasoning_log,
@@ -973,6 +1231,81 @@ class GeneralInquiryAgent(BaseAgent):
         logger.info("%s processing prompt: %s", self.__class__.__name__, user_prompt)
         self._add_analysis_step("Initializing GeneralInquiryAgent")
         self._add_analysis_step(f"Received user prompt: '{user_prompt}'")
+
+        if self.openai_api_key and self.model:
+            return self._process_with_openai(user_prompt)
+        else:
+            return self._process_rule_based(user_prompt)
+
+    def _process_with_openai(self, user_prompt: str) -> Dict:
+        """Process the prompt using OpenAI for intent detection and response generation."""
+        self._add_analysis_step("Using OpenAI for general inquiry processing")
+        prompt = """
+                You are a banking general inquiry agent. Your task is to analyze a customer query about their account (e.g., balance, overview, contact preferences) and provide a response with recommended actions.
+
+                **Context Data**:
+                - Customer Info: {customer_data}
+                - Recent Transactions: {recent_transactions}
+                - Travel Notices: {travel_notice_data}
+                - Customer Query: {query}
+
+                **Instructions**:
+                1. Analyze the query to identify the intent (e.g., check balance, get account overview, update contact preferences, general help).
+                2. Use the customer data and transactions to provide relevant details.
+                3. Generate a natural language response addressing the query.
+                4. Suggest 1-3 next best actions with priority (High, Medium, Low), description, category, and an emoji icon.
+                5. Return a JSON object with:
+                - "response": The natural language response.
+                - "next_best_actions": List of actions, each with "action", "priority", "description", "category", "icon".
+                - "intent": The detected intent.
+                Return ONLY the JSON object, wrapped in ```json\n...\n```.
+                """
+        messages = [{
+            "role": "system",
+            "content": prompt.format(
+                customer_data=json.dumps(self.customer_data, indent=2),
+                recent_transactions=json.dumps(self.recent_transactions, indent=2),
+                travel_notice_data=json.dumps(self.travel_notice_data, indent=2),
+                query=user_prompt
+            )
+        }]
+        response, error = self._make_openai_request(messages)
+        if error:
+            logger.error("%s - OpenAI error: %s. Falling back to rule-based processing", self.__class__.__name__, error)
+            self._add_analysis_step(f"OpenAI error: {error}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+        try:
+            # Strip JSON code fences
+            content = response.strip()
+            if content.startswith("```json\n") and content.endswith("\n```"):
+                content = content[7:-4].strip()
+            result = json.loads(content)
+            self._add_decision_factor("openai_detected_intent", result.get("intent", "unknown"))
+            self._add_analysis_step(f"OpenAI detected intent: {result.get('intent', 'unknown')}")
+            self._set_response_construction("Response generated by OpenAI based on query analysis")
+            for action in result.get("next_best_actions", []):
+                self._add_next_best_action(
+                    action["action"],
+                    action["priority"],
+                    action["description"],
+                    action["category"],
+                    action.get("icon", "🔹")
+                )
+            self._take_action("OpenAI Response Generated", f"Processed query: {user_prompt}")
+            return {
+                "response": result["response"],
+                "reasoning_log": self.reasoning_log,
+                "next_best_actions": result.get("next_best_actions", [])
+            }
+        except json.JSONDecodeError as e:
+            logger.error("%s - Invalid JSON from OpenAI: %s. Falling back to rule-based", self.__class__.__name__, str(e))
+            self._add_analysis_step(f"Invalid JSON from OpenAI: {str(e)}. Switching to rule-based processing")
+            return self._process_rule_based(user_prompt)
+
+    def _process_rule_based(self, user_prompt: str) -> Dict:
+        """Original rule-based processing logic."""
+        self._add_analysis_step("Using rule-based general inquiry processing")
 
         inquiry_type = self._determine_inquiry_type(user_prompt)
         self._add_decision_factor("determined_inquiry_type", inquiry_type)
@@ -1115,7 +1448,7 @@ class GeneralInquiryAgent(BaseAgent):
                     "Security", "🔒"
                 )
 
-        logger.info("%s completed processing", self.__class__.__name__)
+        logger.info("%s completed rule-based processing", self.__class__.__name__)
         return {
             "response": response.strip(),
             "reasoning_log": self.reasoning_log,
@@ -1178,7 +1511,7 @@ class GeneralInquiryAgent(BaseAgent):
         return summary
 
 
-def get_agent_for_routing(agent_name: str, customer_data: Dict, travel_notice_data: Dict, recent_transactions: List[Dict]):
+def get_agent_for_routing(agent_name: str, customer_data: Dict, travel_notice_data: Dict, recent_transactions: List[Dict], openai_api_key: Optional[str] = None, model: Optional[str] = None):
     """Factory function to create the appropriate agent based on routing decision"""
     logger.info("Creating agent: %s", agent_name)
     agent_map = {
@@ -1190,4 +1523,4 @@ def get_agent_for_routing(agent_name: str, customer_data: Dict, travel_notice_da
 
     agent_class = agent_map.get(agent_name, GeneralInquiryAgent)
     logger.debug("Selected agent class: %s", agent_class.__name__)
-    return agent_class(customer_data, travel_notice_data, recent_transactions)
+    return agent_class(customer_data, travel_notice_data, recent_transactions, openai_api_key, model)
